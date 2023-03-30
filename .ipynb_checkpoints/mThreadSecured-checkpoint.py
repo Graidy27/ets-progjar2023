@@ -1,25 +1,27 @@
+import os
 from socket import *
 import socket
-import os
-import ssl
+import threading
 import logging
-import multiprocessing
+import ssl
+
 from http import HttpServer
 
 httpserver = HttpServer()
 
 
-class ProcessTheClient(multiprocessing.Process):
+class ProcessTheClient(threading.Thread):
 	def __init__(self, connection, address):
 		self.connection = connection
 		self.address = address
-		multiprocessing.Process.__init__(self)
+		threading.Thread.__init__(self)
 
 	def run(self):
 		rcv=""
 		while True:
 			try:
 				data = self.connection.recv(32)
+				# print("ini data %r, untuk address %r", data, self.address)
 				if data:
 					#merubah input dari socket (berupa bytes) ke dalam string
 					#agar bisa mendeteksi \r\n
@@ -46,39 +48,33 @@ class ProcessTheClient(multiprocessing.Process):
 
 
 
-
-class Server(multiprocessing.Process):
+class Server(threading.Thread):
 	def __init__(self, hostname='testing.net'):
 		self.the_clients = []
-				#------------------------------
-		# self.hostname = hostname
+		#------------------------------
+		self.hostname = hostname
 		cert_location = os.getcwd() + '/certs/'
 		self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 		self.context.load_cert_chain(certfile=cert_location + 'domain.crt',
 									 keyfile=cert_location + 'domain.key')
 #---------------------------------
-
 		self.my_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.my_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-		multiprocessing.Process.__init__(self)
+		threading.Thread.__init__(self)
 
 	def run(self):
 		self.my_socket.bind(('0.0.0.0', 8080))
-		self.my_socket.listen(1010)
+		self.my_socket.listen(1000)
 		while True:
 			self.connection, self.client_address = self.my_socket.accept()
-			# logging.warning("connection from {}".format(self.client_address))
 			try:
 				self.secure_connection = self.context.wrap_socket(self.connection, server_side=True)
 				logging.warning("connection from {}".format(self.client_address))
-				clt = ProcessTheClient(self.connection, self.client_address)
-				self.the_clients.append(clt)
-				clt.daemon = True
+				clt = ProcessTheClient(self.secure_connection, self.client_address)
 				clt.start()
-				self.connection.close()
+				self.the_clients.append(clt)
 			except ssl.SSLError as essl:
 				print(str(essl))
-				break
 
 
 def main():
